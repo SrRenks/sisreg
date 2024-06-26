@@ -89,7 +89,7 @@ if __name__ == '__main__':
             for method in worker["methods"]:
                 df = pd.DataFrame(method["relatory"], dtype=str)
                 if not df.empty:
-                    df[["Unidade Executante", "Endereço Unidade", "Profissional"]] = unit["name"], addresses.get(unit["name"], ""), worker["name"]
+                    df[["Unidade Executante", "Endereco Unidade", "Profissional"]] = unit["name"], addresses.get(unit["name"], ""), worker["name"]
                     df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series(re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})', x).groups()) if pd.notnull(x) else pd.Series(["", ""]))
                     df.drop("Data/Hora", axis=1, inplace=True)
                     df.replace("---", None, inplace=True)
