@@ -109,7 +109,7 @@ if __name__ == '__main__':
 
             with open(temp_file.name, "rb") as file:
                 data = file.read()
-            os.remove(temp_file.name)
+        os.remove(temp_file.name)
 
     elif args["export_type"] == "json":
         data = df.to_dict(orient="records")
