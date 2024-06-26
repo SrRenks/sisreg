@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 from src.utils import Sisreg
 import concurrent.futures
 from tqdm import tqdm
@@ -11,14 +10,14 @@ import sys
 import os
 import re
 
-load_dotenv()
-
 if __name__ == '__main__':
     today = datetime.today().strftime("%d/%m/%Y")
     five_after = (datetime.today() + timedelta(5)).strftime("%d/%m/%Y")
 
     parser = argparse.ArgumentParser(description='Sisreg class arg parser')
-    parser.add_argument('--unit', '-u', type=str, help='units', nargs='+', required=False)
+    parser.add_argument('--username', '-u', type=str, help='Login Username', required=True)
+    parser.add_argument('--password', '-p', type=str, help='Login Password', required=True)
+    parser.add_argument('--unit', '-ut', type=str, help='units', nargs='+', required=False)
     parser.add_argument('--from_date', '-f', type=str, help='initial range', default=today, required=False)
     parser.add_argument('--to_date', '-t', type=str, help='final range', default=five_after, required=False)
     parser.add_argument('--columns', '-c', type=str, help='selected columns', nargs='+', default=None, required=False)
@@ -26,9 +25,8 @@ if __name__ == '__main__':
     parser.add_argument('--export_type', '-et', type=str, choices=['json', 'xlsx'], default="xlsx", help='type method to export data, default "xlsx"', required=False)
 
     args = vars(parser.parse_args())
-    sisreg = Sisreg(os.getenv("SISREG_LOGIN"), os.getenv("SISREG_PASSWORD"))
+    sisreg = Sisreg(args["username"], args["password"])
     units = sisreg.get_schedule_unit(args["unit"])
-
 
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
               desc="get workers from unit(s)", postfix={"workers": "0"}) as pbar:
