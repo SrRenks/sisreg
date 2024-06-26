@@ -6,12 +6,8 @@ The **Sisreg Python Module** facilitates data extraction and interaction with th
 
 ## Installation
 
-You can install the Sisreg Python module using pip:
+You can install the Sisreg Python module using git:
 
-```bash
-pip install sisreg
-```
-Or with git:
 ```
 git clone "https://github.com/SrRenks/sisreg.git"
 ```
