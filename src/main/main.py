@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from src.utils import dfmanager
 from src.utils import Sisreg
 import concurrent.futures
 from tqdm import tqdm
@@ -30,7 +29,7 @@ if __name__ == '__main__':
     sisreg = Sisreg(args["username"], args["password"])
     units = sisreg.get_schedule_unit(args["unit"])
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
-              desc="get workers from unit(s)", postfix={"workers": "0"}) as pbar:
+              desc="get workers from unit(s)", postfix={"workers": "0"}, leave=False) as pbar:
 
         unit_futures_map = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -44,7 +43,7 @@ if __name__ == '__main__':
                 pbar.update(1), pbar.set_postfix(workers=len(units))
 
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
-              desc="get workers methods", postfix={"unit": ""}) as pbar:
+              desc="get workers methods", postfix={"unit": ""}, leave=False) as pbar:
 
         unit_futures_map = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -60,8 +59,8 @@ if __name__ == '__main__':
     with open(os.path.join("resources", "relatory_flags.json"), "r") as file:
         flags = json.loads(file.read())
 
-    with tqdm(total=len(units), ascii=' ━', colour='GREEN',
-              dynamic_ncols=True, unit="unit", desc="get workers method relatorys", postfix={"unit": ""}) as pbar:
+    with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
+              desc="get workers method relatorys", postfix={"unit": ""}, leave=False) as pbar:
 
         unit_futures_map = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
