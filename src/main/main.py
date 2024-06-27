@@ -89,6 +89,16 @@ if __name__ == '__main__':
             for method in worker["methods"]:
                 df = pd.DataFrame(method["relatory"], dtype=str)
                 if not df.empty:
+                    filter = df.apply(lambda row: any(pd.to_numeric(row.str.extract(r'^(\d+) - ', expand=False)) > 1), axis=1)
+                    filtered_df = df[filter]
+
+                    for index in filtered_df.index:
+                        if index - 1 >= 0:
+                            if df.loc[index - 1].str.contains("01 - ").any():
+                                value = next(value for value in filtered_df.loc[index].values if isinstance(value, str) and re.search(r'^(\d+) - ', value))
+                                df.loc[index] = df.loc[index - 1]
+                                df.loc[index - 1, ["Procedimento", "Procedimento.1"]] = value, value
+
                     df[["Unidade Executante", "Endereco Unidade", "Profissional"]] = unit["name"], addresses.get(unit["name"], ""), worker["name"]
                     df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series(re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})', x).groups()) if pd.notnull(x) else pd.Series(["", ""]))
                     df.drop("Data/Hora", axis=1, inplace=True)
