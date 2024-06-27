@@ -9,7 +9,6 @@ import re
 
 headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; rv:127.0) Gecko/20100101 Firefox/127.0"}
 
-
 class Sisreg:
     def __init__(self, user: str, password: str) -> None:
         self.__user = self.__str_validator(user)
