@@ -96,6 +96,8 @@ if __name__ == '__main__':
                     dfs.append(df)
 
     df = pd.concat(dfs)
+    df.sort_values(by=['Data', 'Hora'], inplace=True)
+
     if args["columns"]:
         valid_columns = df.columns.to_list()
         invalid_columns = [column for column in args["columns"] if column not in valid_columns]
