@@ -1,3 +1,4 @@
+from collections import defaultdict
 from .exceptions import LoginError
 from typing import List, Dict
 from bs4 import BeautifulSoup
@@ -135,7 +136,7 @@ class Sisreg:
         if not table:
             return {}
 
-        df = pd.read_html(StringIO(table.prettify()), header=0)[0]
+        df = pd.read_html(StringIO(table.prettify()), header=0, converters=defaultdict(lambda: str))[0]
         df = df.apply(split_and_expand_phone_numbers, axis=1).reset_index(drop=True)
         df = pd.concat(df.tolist(), ignore_index=True)
         return df.to_dict(orient="records")
