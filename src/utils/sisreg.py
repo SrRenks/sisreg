@@ -40,8 +40,14 @@ class Sisreg:
 
         return login.history[0].cookies.get_dict()
 
-    def get_schedule_unit(self, unit_name: List[str] = None, unit_id: List[str] = None) -> List[Dict[str, str]]:
+    def __get_session(self) -> requests.Session:
         session = requests.Session()
+        session.get("https://sisregiii.saude.gov.br/cgi-bin/recaptcha?cod=0", headers=headers, cookies=self.__cookies)
+        return session
+
+    def get_schedule_unit(self, unit_name: List[str] = None, unit_id: List[str] = None) -> List[Dict[str, str]]:
+        session = self.__get_session()
+
         sched = session.get("https://sisregiii.saude.gov.br/cgi-bin/cons_agendas", headers=headers,
                     cookies=self.__cookies)
 
@@ -49,41 +55,45 @@ class Sisreg:
         table = sched.find("table", {"class": "table_listagem"})
         executor_tr = next(td for td in table.find_all("tr") if re.search(r"Executante", td.text))
         unit_options = executor_tr.find_all("option")
-        units = [{"name": unit.text, "id": unit["value"]} for unit in unit_options if (unit.has_attr("value") and unit["value"])]
+        units = [{"unit": unit.text, "unit_id": unit["value"]} for unit in unit_options if (unit.has_attr("value") and unit["value"])]
         if unit_name or unit_id:
             filtered_units = []
             for unit in units:
-                name_matches = any(re.match(name, unit["name"], flags=re.I) for name in unit_name) if unit_name else True
-                id_matches = any(re.match(id_, unit["id"]) for id_ in unit_id) if unit_id else True
+                name_matches = any(re.match(name, unit["unit"], flags=re.I) for name in unit_name) if unit_name else True
+                id_matches = any(re.match(id_, unit["unit_id"]) for id_ in unit_id) if unit_id else True
                 if name_matches and id_matches:
                     filtered_units.append(unit)
             return filtered_units
 
         return units
 
-    def get_workers_from_schedule_unit(self, unity_id) -> Dict[str, str]:
-        session = requests.Session()
-        params = {"BUSCA": "PROFISSIONAIS_POR_UPS", "AJAX_UPS": unity_id}
+    def get_workers_from_schedule_unit(self, unit_data: Dict[str, str]) -> Dict[str, str]:
+        session = self.__get_session()
+        params = {"BUSCA": "PROFISSIONAIS_POR_UPS", "AJAX_UPS": unit_data["unit_id"]}
         workers = session.get("https://sisregiii.saude.gov.br/cgi-bin/sisreg_ajax", params=params,
                                     cookies=self.__cookies)
 
         workers = BeautifulSoup(workers.content, "xml")
-        workers = [{"name": worker.text, "id": worker["codigo"]} for worker in workers.find_all("ROW") if (worker.has_attr("codigo") and worker["codigo"])]
+        workers = [{**{"worker": worker.text, "worker_id": worker["codigo"]}, **unit_data}
+                   for worker in workers.find_all("ROW") if (worker.has_attr("codigo") and worker["codigo"])]
+
         return workers
 
-    def get_worker_methods_from_schedule_unit(self, unit_id: str, worker_id: str):
-        session = requests.Session()
-        params = {"BUSCA": "PROCEDIMENTOS_POR_PROFISSIONAIS_E_UPS", "AJAX_UPS": unit_id,
-                  "AJAX_CPF": worker_id}
+    def get_worker_methods_from_schedule_unit(self, worker_data: Dict[str, str]) -> Dict[str, str]:
+        session = self.__get_session()
+
+        params = {"BUSCA": "PROCEDIMENTOS_POR_PROFISSIONAIS_E_UPS", "AJAX_UPS": worker_data["unit_id"],
+                  "AJAX_CPF": worker_data["worker_id"]}
 
         methods = session.get("https://sisregiii.saude.gov.br/cgi-bin/sisreg_ajax", params=params,
                                     cookies=self.__cookies)
 
         methods = BeautifulSoup(methods.content, "xml")
-        methods = [{"name": method.text, "id": method["codigo"]} for method in methods.find_all("ROW") if (method.has_attr("codigo") and method["codigo"])]
+        methods = [{**{"method": method.text, "method_id": method["codigo"]}, **worker_data}
+                   for method in methods.find_all("ROW") if (method.has_attr("codigo") and method["codigo"])]
         return methods
 
-    def get_worker_schedule_relatory(self, from_date: str, to_date: str, unit_id: str, worker_id: str, method_id: str, **flags) -> Dict[str, str]:
+    def get_worker_schedule_relatory(self, from_date: str, to_date: str, worker_data: Dict[str, str], **flags) -> Dict[str, str]:
 
         valid_params = {"chkboxExibirProcedimentos": r'^(on|off)$',
                         "chkboxExibirTelefones": r'^(on|off)$',
@@ -101,20 +111,19 @@ class Sisreg:
         if invalid_formats:
             raise ValueError(f"invalid flags value formats: {', '.join(f'{key}: {value}' for key, value in invalid_formats.items())}")
 
-
         payload = {"co_solicitacao": "",
                   "cns_paciente": "",
                   "dataInicial": from_date,
                   "dataFinal": to_date,
-                  "ups": unit_id,
-                  "cpf": worker_id,
-                  "pa": method_id,
+                  "ups": worker_data["unit_id"],
+                  "cpf": worker_data["worker_id"],
+                  "pa": worker_data["method_id"],
                   "cmbTipoOperacao": "Consulta",
                   "etapa": "ListaImpressao"}
 
         payload.update(flags)
 
-        session = requests.Session()
+        session = self.__get_session()
         relatory = session.post("https://sisregiii.saude.gov.br/cgi-bin/cons_agendas", headers=headers, data=payload,
                                 cookies=self.__cookies)
 
@@ -139,4 +148,5 @@ class Sisreg:
         df = pd.read_html(StringIO(table.prettify()), header=0, converters=defaultdict(lambda: str))[0]
         df = df.apply(split_and_expand_phone_numbers, axis=1).reset_index(drop=True)
         df = pd.concat(df.tolist(), ignore_index=True)
+        df[["unit", "unit_id", "worker", "worker_id", "method", "method_id"]] = worker_data["unit"], worker_data["unit_id"], worker_data["worker"], worker_data["worker_id"], worker_data["method"], worker_data["method_id"]
         return df.to_dict(orient="records")
