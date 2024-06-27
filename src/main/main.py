@@ -119,4 +119,5 @@ if __name__ == '__main__':
         with open(args["export_path"], "wb") as file:
             file.write(data)
     else:
-        sys.exit(data)
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
