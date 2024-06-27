@@ -29,76 +29,72 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     sisreg = Sisreg(args["username"], args["password"])
     units = sisreg.get_schedule_unit(args["unit"])
-
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
               desc="get workers from unit(s)", postfix={"workers": "0"}) as pbar:
 
         unit_futures_map = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = {executor.submit(sisreg.get_workers_from_schedule_unit, unit["id"]): unit for unit in units}
+            futures = {executor.submit(sisreg.get_workers_from_schedule_unit, unit): unit for unit in units}
+            units.clear()
             unit_futures_map.update(futures)
-
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
                 unit_param = unit_futures_map[future]
-                [unit.update({"workers": result}) for unit in units if unit == unit_param]
-                pbar.update(1), pbar.set_postfix(workers=sum(len(unit.get("workers", [])) for unit in units))
+                units.extend(result)
+                pbar.update(1), pbar.set_postfix(workers=len(units))
 
-    with tqdm(total=sum(len(unit["workers"]) for unit in units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
+    with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
               desc="get workers methods", postfix={"unit": ""}) as pbar:
-        unit_futures_map = {}
-        for unit in units:
-            workers = unit["workers"]
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = {executor.submit(sisreg.get_worker_methods_from_schedule_unit, unit["id"], worker["id"]): worker for worker in workers}
-                unit_futures_map.update(futures)
 
-                for future in concurrent.futures.as_completed(futures):
-                    result = future.result()
-                    worker_param = unit_futures_map[future]
-                    unit["workers"] = workers
-                    [worker.update({"methods": result}) for worker in workers if worker == worker_param]
-                    pbar.update(1), pbar.set_postfix(unit=unit["name"])
+        unit_futures_map = {}
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {executor.submit(sisreg.get_worker_methods_from_schedule_unit, worker): worker for worker in units}
+            units.clear()
+            unit_futures_map.update(futures)
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                worker_param = unit_futures_map[future]
+                units.extend(result)
+                pbar.update(1), pbar.set_postfix(unit=worker_param["unit"])
 
     with open(os.path.join("resources", "relatory_flags.json"), "r") as file:
         flags = json.loads(file.read())
 
-    with tqdm(total=sum(len(worker["methods"]) for unit in units for worker in unit["workers"]), ascii=' ━', colour='GREEN',
+    with tqdm(total=len(units), ascii=' ━', colour='GREEN',
               dynamic_ncols=True, unit="unit", desc="get workers method relatorys", postfix={"unit": ""}) as pbar:
 
         unit_futures_map = {}
-        for unit in units:
-            workers = unit["workers"]
-            for worker in workers:
-                methods = worker["methods"]
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    futures = {executor.submit(sisreg.get_worker_schedule_relatory, args["from_date"], args["to_date"],
-                                               unit["id"], worker["id"], method["id"], **flags): method for method in methods}
-                    unit_futures_map.update(futures)
-
-                    for future in concurrent.futures.as_completed(futures):
-                        result = future.result()
-                        method_param = unit_futures_map[future]
-                        [method.update({"relatory": result}) for method in methods if method == method_param]
-                        pbar.update(1), pbar.set_postfix(unit=unit["name"])
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {executor.submit(sisreg.get_worker_schedule_relatory, args["from_date"], args["to_date"],
+                                        method, **flags): method for method in units}
+            units.clear()
+            unit_futures_map.update(futures)
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                method_param = unit_futures_map[future]
+                units.extend(result)
+                pbar.update(1), pbar.set_postfix(unit=method_param["unit"])
 
     with open(os.path.join("resources", "unit_address.json"), "r") as file:
         addresses = json.loads(file.read())
 
-    df = []
+    df = pd.DataFrame(units, dtype=str)
+    if not df.empty:
+        filter = df.apply(lambda row: any(pd.to_numeric(row.str.extract(r'^(\d+)\s+\-\s+', expand=False)) > 1), axis=1)
+        filtered_df = df[filter]
 
-    with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
-              desc="get dataframes from units", postfix={"unit": ""}) as pbar:
+        for index in filtered_df.index:
+            if index - 1 >= 0:
+                if df.loc[index - 1].str.contains(r'^01\s+\-\s+', regex=True).any():
+                    value = next(value for value in filtered_df.loc[index].values if isinstance(value, str) and re.search(r'^(\d+) - ', value))
+                    df.loc[index] = df.loc[index - 1]
+                    df.loc[index - 1, ["Procedimento", "Procedimento.1"]] = value, value
 
-        for unit in units:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = {executor.submit(dfmanager.get_unit_dataframe, unit): unit for unit in units}
-                for future in concurrent.futures.as_completed(futures):
-                    result = future.result()
-                    df.append(result)
-                    pbar.update(1), pbar.set_postfix(unit=unit["name"])
+        df['Data/Hora'] = df['Data/Hora'].apply(lambda x: datetime.strptime(re.search(r"(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{2}\:\d{2})", x).group(1), "%d/%m/%Y %H:%M") if pd.notnull(x) else None)
+        df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series([x.strftime("%d/%m/%Y"), x.strftime("%H:%M")]) if pd.notnull(x) else pd.Series([None, None]))
+        df['address'] = df['unit'].apply(lambda x: addresses.get(x, ""))
+        df.replace("---", None, inplace=True)
 
-    df = pd.concat(df)
     df.sort_values(by=['Data/Hora'], ascending=True, inplace=True)
 
     if args["columns"]:
