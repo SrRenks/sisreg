@@ -5,13 +5,11 @@ from tqdm import tqdm
 import pandas as pd
 import argparse
 import tempfile
-import locale
 import json
 import sys
 import os
 import re
 
-locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
 
 if __name__ == '__main__':
     today = datetime.today().strftime("%d/%m/%Y")
@@ -92,7 +90,7 @@ if __name__ == '__main__':
             for method in worker["methods"]:
                 df = pd.DataFrame(method["relatory"], dtype=str)
                 if not df.empty:
-                    filter = df.apply(lambda row: any(pd.to_numeric(row.str.extract(r'^(\d+) - ', expand=False)) > 1), axis=1)
+                    filter = df.apply(lambda row: any(pd.to_numeric(row.str.extract(r'^(\d+)\s+\-\s+', expand=False)) > 1), axis=1)
                     filtered_df = df[filter]
 
                     for index in filtered_df.index:
@@ -103,7 +101,7 @@ if __name__ == '__main__':
                                 df.loc[index - 1, ["Procedimento", "Procedimento.1"]] = value, value
 
                     df[["Unidade Executante", "Endereco Unidade", "Profissional"]] = unit["name"], addresses.get(unit["name"], ""), worker["name"]
-                    df['Data/Hora'] = df['Data/Hora'].apply(lambda x: datetime.strptime(x, "%a %d/%m/%Y %H:%M") if pd.notnull(x) else None)
+                    df['Data/Hora'] = df['Data/Hora'].apply(lambda x: datetime.strptime(re.search(r"(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{2}\:\d{2})", x).group(1), "%d/%m/%Y %H:%M") if pd.notnull(x) else None)
                     df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series([x.strftime("%d/%m/%Y"), x.strftime("%H:%M")]) if pd.notnull(x) else pd.Series([None, None]))
                     df.replace("---", None, inplace=True)
                     dfs.append(df)
