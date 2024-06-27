@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from src.utils import dfmanager
 from src.utils import Sisreg
 import concurrent.futures
 from tqdm import tqdm
@@ -84,29 +85,20 @@ if __name__ == '__main__':
     with open(os.path.join("resources", "unit_address.json"), "r") as file:
         addresses = json.loads(file.read())
 
-    dfs = []
-    for unit in units:
-        for worker in unit["workers"]:
-            for method in worker["methods"]:
-                df = pd.DataFrame(method["relatory"], dtype=str)
-                if not df.empty:
-                    filter = df.apply(lambda row: any(pd.to_numeric(row.str.extract(r'^(\d+)\s+\-\s+', expand=False)) > 1), axis=1)
-                    filtered_df = df[filter]
+    df = []
 
-                    for index in filtered_df.index:
-                        if index - 1 >= 0:
-                            if df.loc[index - 1].str.contains("01 - ").any():
-                                value = next(value for value in filtered_df.loc[index].values if isinstance(value, str) and re.search(r'^(\d+) - ', value))
-                                df.loc[index] = df.loc[index - 1]
-                                df.loc[index - 1, ["Procedimento", "Procedimento.1"]] = value, value
+    with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
+              desc="get dataframes from units", postfix={"unit": ""}) as pbar:
 
-                    df[["Unidade Executante", "Endereco Unidade", "Profissional"]] = unit["name"], addresses.get(unit["name"], ""), worker["name"]
-                    df['Data/Hora'] = df['Data/Hora'].apply(lambda x: datetime.strptime(re.search(r"(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{2}\:\d{2})", x).group(1), "%d/%m/%Y %H:%M") if pd.notnull(x) else None)
-                    df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series([x.strftime("%d/%m/%Y"), x.strftime("%H:%M")]) if pd.notnull(x) else pd.Series([None, None]))
-                    df.replace("---", None, inplace=True)
-                    dfs.append(df)
+        for unit in units:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = {executor.submit(dfmanager.get_unit_dataframe, unit): unit for unit in units}
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    df.append(result)
+                    pbar.update(1), pbar.set_postfix(unit=unit["name"])
 
-    df = pd.concat(dfs)
+    df = pd.concat(df)
     df.sort_values(by=['Data/Hora'], ascending=True, inplace=True)
 
     if args["columns"]:
