@@ -5,6 +5,7 @@ from tqdm import tqdm
 import pandas as pd
 import argparse
 import tempfile
+import psutil
 import json
 import sys
 import os
@@ -35,11 +36,16 @@ if __name__ == '__main__':
 
     sisreg = Sisreg(args["username"], args["password"])
     units = sisreg.get_schedule_unit(args["unit"])
+
+    cpu_frequency = psutil.cpu_freq().current / 1000
+    max_cpu_capacity = os.cpu_count() * psutil.cpu_count(logical=True) * psutil.cpu_freq().current / 1000
+    threads = int(max_cpu_capacity / cpu_frequency)
+
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
-              desc="get workers from unit(s)", postfix={"workers": "0"}, leave=False) as pbar:
+              desc=f"get workers from unit(s) (threads: {threads})", postfix={"workers": "0"}, leave=False) as pbar:
 
         unit_futures_map = {}
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(threads) as executor:
             futures = {executor.submit(sisreg.get_workers_from_schedule_unit, unit): unit for unit in units}
             units.clear()
             unit_futures_map.update(futures)
@@ -50,10 +56,10 @@ if __name__ == '__main__':
                 pbar.update(1), pbar.set_postfix(workers=len(units))
 
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
-              desc="get workers methods", postfix={"unit": ""}, leave=False) as pbar:
+              desc=f"get workers methods (threads: {threads})", postfix={"unit": ""}, leave=False) as pbar:
 
         unit_futures_map = {}
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(threads) as executor:
             futures = {executor.submit(sisreg.get_worker_methods_from_schedule_unit, worker): worker for worker in units}
             units.clear()
             unit_futures_map.update(futures)
@@ -70,10 +76,10 @@ if __name__ == '__main__':
         flags = json.loads(file.read())
 
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
-              desc="get workers method relatorys", postfix={"unit": ""}, leave=False) as pbar:
+              desc=f"get method data (threads: {threads})", postfix={"worker": "", "threads": threads}, leave=False) as pbar:
 
         unit_futures_map = {}
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(threads) as executor:
             futures = {executor.submit(sisreg.get_worker_schedule_relatory, method, **flags): method for method in units}
             units.clear()
             unit_futures_map.update(futures)
