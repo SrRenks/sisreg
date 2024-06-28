@@ -38,7 +38,8 @@ if __name__ == '__main__':
 
     cpu_frequency = psutil.cpu_freq().current / 1000
     max_cpu_capacity = os.cpu_count() * psutil.cpu_count(logical=True) * psutil.cpu_freq().current / 1000
-    threads = int(max_cpu_capacity / cpu_frequency)
+
+    threads = min(int(max_cpu_capacity / cpu_frequency), 144)
 
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
               desc=f"get workers from unit(s) (threads: {threads})", postfix={"workers": "0"}, leave=False) as pbar:
