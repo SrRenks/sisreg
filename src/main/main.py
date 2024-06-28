@@ -69,13 +69,13 @@ if __name__ == '__main__':
                               for from_date_str, to_date_str in date_range
                               for data in result])
 
-                pbar.update(1), pbar.set_postfix(unit=worker_param["unit"])
+                pbar.update(1), pbar.set_postfix(unit=f"{worker_param['unit'][:20]}{'+' if len(worker_param['unit']) > 20 else ''}")
 
     with open(os.path.join("resources", "relatory_flags.json"), "r") as file:
         flags = json.loads(file.read())
 
-    with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
-              desc=f"get method data (threads: {threads})", postfix={"worker": "", "threads": threads}, leave=False) as pbar:
+    with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="data",
+              desc=f"get method data (threads: {threads})", postfix={"unit": ""}, leave=False) as pbar:
 
         unit_futures_map = {}
         with concurrent.futures.ThreadPoolExecutor(threads) as executor:
@@ -86,7 +86,7 @@ if __name__ == '__main__':
                 result = future.result()
                 method_param = unit_futures_map[future]
                 units.extend(result)
-                pbar.update(1), pbar.set_postfix(unit=method_param["unit"])
+                pbar.update(1), pbar.set_postfix(unit=f"{method_param['unit'][:20]}{'+' if len(method_param['unit']) > 20 else ''}")
 
     with open(os.path.join("resources", "unit_address.json"), "r") as file:
         addresses = json.loads(file.read())
