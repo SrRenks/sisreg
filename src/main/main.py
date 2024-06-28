@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
         df['Data/Hora'] = df['Data/Hora'].apply(lambda x: datetime.strptime(re.search(r"(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{2}\:\d{2})", x).group(1), "%d/%m/%Y %H:%M") if pd.notnull(x) else None)
         df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series([x.strftime("%d/%m/%Y"), x.strftime("%H:%M")]) if pd.notnull(x) else pd.Series([None, None]))
-        df['address'] = df['unit'].apply(lambda x: addresses.get(x, ""))
+        df['Endereco'] = df['Unidade'].apply(lambda x: addresses.get(x, ""))
         df.replace("---", None, inplace=True)
 
     df.sort_values(by=['Data/Hora'], ascending=True, inplace=True)

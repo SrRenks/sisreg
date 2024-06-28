@@ -148,5 +148,5 @@ class Sisreg:
         df = pd.read_html(StringIO(table.prettify()), header=0, converters=defaultdict(lambda: str))[0]
         df = df.apply(split_and_expand_phone_numbers, axis=1).reset_index(drop=True)
         df = pd.concat(df.tolist(), ignore_index=True)
-        df[["unit", "unit_id", "worker", "worker_id", "method", "method_id"]] = worker_data["unit"], worker_data["unit_id"], worker_data["worker"], worker_data["worker_id"], worker_data["method"], worker_data["method_id"]
+        df[["Unidade", "unit_id", "Profissional", "worker_id", "method_id"]] = worker_data["unit"], worker_data["unit_id"], worker_data["worker"], worker_data["worker_id"], worker_data["method_id"]
         return df.to_dict(orient="records")
