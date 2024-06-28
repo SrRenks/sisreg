@@ -91,9 +91,10 @@ class Sisreg:
         methods = BeautifulSoup(methods.content, "xml")
         methods = [{**{"method": method.text, "method_id": method["codigo"]}, **worker_data}
                    for method in methods.find_all("ROW") if (method.has_attr("codigo") and method["codigo"])]
+
         return methods
 
-    def get_worker_schedule_relatory(self, from_date: str, to_date: str, worker_data: Dict[str, str], **flags) -> Dict[str, str]:
+    def get_worker_schedule_relatory(self, worker_data: Dict[str, str], **flags) -> Dict[str, str]:
 
         valid_params = {"chkboxExibirProcedimentos": r'^(on|off)$',
                         "chkboxExibirTelefones": r'^(on|off)$',
@@ -113,8 +114,8 @@ class Sisreg:
 
         payload = {"co_solicitacao": "",
                   "cns_paciente": "",
-                  "dataInicial": from_date,
-                  "dataFinal": to_date,
+                  "dataInicial": worker_data["from_date"],
+                  "dataFinal": worker_data["to_date"],
                   "ups": worker_data["unit_id"],
                   "cpf": worker_data["worker_id"],
                   "pa": worker_data["method_id"],
