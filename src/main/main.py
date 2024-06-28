@@ -13,15 +13,14 @@ import re
 
 
 if __name__ == '__main__':
-    today = datetime.today().strftime("%d/%m/%Y")
-    five_after = (datetime.today() + timedelta(5)).strftime("%d/%m/%Y")
-
+    from_date = datetime.today().strftime("%d/%m/%Y")
+    to_date = (datetime.today() + timedelta(7)).strftime("%d/%m/%Y")
     parser = argparse.ArgumentParser(description='Sisreg class arg parser')
     parser.add_argument('--username', '-u', type=str, help='Login Username', required=True)
     parser.add_argument('--password', '-p', type=str, help='Login Password', required=True)
     parser.add_argument('--unit', '-ut', type=str, help='units', nargs='+', required=False)
-    parser.add_argument('--from_date', '-f', type=str, help='initial range', default=today, required=False)
-    parser.add_argument('--to_date', '-t', type=str, help='final range', default=five_after, required=False)
+    parser.add_argument('--from_date', '-f', type=str, help='initial range', default=from_date, required=False)
+    parser.add_argument('--to_date', '-t', type=str, help='final range', default=to_date, required=False)
     parser.add_argument('--columns', '-c', type=str, help='selected columns', nargs='+', default=None, required=False)
     parser.add_argument('--export_path', '-ep', type=str, default=None, help='path to export data, if None will be returned in console', required=False)
     parser.add_argument('--export_type', '-et', type=str, choices=['json', 'xlsx'], default="xlsx", help='type method to export data, default "xlsx"', required=False)
