@@ -58,7 +58,6 @@ class Sisreg:
                 count += 1
                 sleep(wait)
                 if count == retry:
-                    print("max retry")
                     raise error
 
     def __get_schedule_unit(self) -> requests.Response:
