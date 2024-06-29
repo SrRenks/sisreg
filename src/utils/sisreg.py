@@ -1,8 +1,9 @@
+from typing import List, Dict, Callable, Optional
 from collections import defaultdict
 from .exceptions import LoginError
-from typing import List, Dict
 from bs4 import BeautifulSoup
 from io import StringIO
+from time import sleep
 import pandas as pd
 import requests
 import hashlib
@@ -45,12 +46,27 @@ class Sisreg:
         session.get("https://sisregiii.saude.gov.br/cgi-bin/recaptcha?cod=0", headers=headers, cookies=self.__cookies)
         return session
 
-    def get_schedule_unit(self, unit_name: List[str] = None, unit_id: List[str] = None) -> List[Dict[str, str]]:
-        session = self.__get_session()
+    def __manage_request(self, request: Callable, *payload: Optional[Dict[str, str]], retry: int = 5, wait: int = 5) -> requests.Response:
 
-        sched = session.get("https://sisregiii.saude.gov.br/cgi-bin/cons_agendas", headers=headers,
+        count = 0
+        while count < retry:
+            try:
+                response = request(*payload)
+                return response
+
+            except requests.exceptions.RequestException as error:
+                count += 1
+                sleep(wait)
+                if count == retry:
+                    print("max retry")
+                    raise error
+
+    def __get_schedule_unit(self) -> requests.Response:
+        return self.__manage_request(self.__get_session).get("https://sisregiii.saude.gov.br/cgi-bin/cons_agendas", headers=headers,
                     cookies=self.__cookies)
 
+    def get_schedule_unit(self, unit_name: List[str] = None, unit_id: List[str] = None) -> List[Dict[str, str]]:
+        sched = self.__manage_request(self.__get_schedule_unit)
         sched = BeautifulSoup(sched.content, "html.parser")
         table = sched.find("table", {"class": "table_listagem"})
         executor_tr = next(td for td in table.find_all("tr") if re.search(r"Executante", td.text))
@@ -67,32 +83,38 @@ class Sisreg:
 
         return units
 
-    def get_workers_from_schedule_unit(self, unit_data: Dict[str, str]) -> Dict[str, str]:
-        session = self.__get_session()
-        params = {"BUSCA": "PROFISSIONAIS_POR_UPS", "AJAX_UPS": unit_data["unit_id"]}
-        workers = session.get("https://sisregiii.saude.gov.br/cgi-bin/sisreg_ajax", params=params,
-                                    cookies=self.__cookies)
+    def __get_worker_from_schedule_unit(self, params: Dict[str, str]) -> requests.Response:
+        return self.__manage_request(self.__get_session).get("https://sisregiii.saude.gov.br/cgi-bin/sisreg_ajax", params=params,
+                            cookies=self.__cookies)
 
+    def get_workers_from_schedule_unit(self, unit_data: Dict[str, str]) -> Dict[str, str]:
+        params = {"BUSCA": "PROFISSIONAIS_POR_UPS", "AJAX_UPS": unit_data["unit_id"]}
+        workers = self.__manage_request(self.__get_worker_from_schedule_unit, params)
         workers = BeautifulSoup(workers.content, "xml")
         workers = [{**{"worker": worker.text, "worker_id": worker["codigo"]}, **unit_data}
                    for worker in workers.find_all("ROW") if (worker.has_attr("codigo") and worker["codigo"])]
 
         return workers
 
-    def get_worker_methods_from_schedule_unit(self, worker_data: Dict[str, str]) -> Dict[str, str]:
-        session = self.__get_session()
+    def __get_worker_methods_from_schedule_unit(self, params: Dict[str, str]) -> requests.Response:
+        return self.__manage_request(self.__get_session).get("https://sisregiii.saude.gov.br/cgi-bin/sisreg_ajax", params=params,
+                           cookies=self.__cookies)
 
+    def get_worker_methods_from_schedule_unit(self, worker_data: Dict[str, str]) -> Dict[str, str]:
         params = {"BUSCA": "PROCEDIMENTOS_POR_PROFISSIONAIS_E_UPS", "AJAX_UPS": worker_data["unit_id"],
                   "AJAX_CPF": worker_data["worker_id"]}
 
-        methods = session.get("https://sisregiii.saude.gov.br/cgi-bin/sisreg_ajax", params=params,
-                                    cookies=self.__cookies)
+        methods = self.__manage_request(self.__get_worker_methods_from_schedule_unit, params)
 
         methods = BeautifulSoup(methods.content, "xml")
         methods = [{**{"method": method.text, "method_id": method["codigo"]}, **worker_data}
                    for method in methods.find_all("ROW") if (method.has_attr("codigo") and method["codigo"])]
 
         return methods
+
+    def __get_worker_schedule_relatory(self, payload: Dict[str, str]) -> requests.Response:
+        return self.__manage_request(self.__get_session).post("https://sisregiii.saude.gov.br/cgi-bin/cons_agendas", headers=headers, data=payload,
+                                cookies=self.__cookies)
 
     def get_worker_schedule_relatory(self, worker_data: Dict[str, str], **flags) -> Dict[str, str]:
 
@@ -124,9 +146,7 @@ class Sisreg:
 
         payload.update(flags)
 
-        session = self.__get_session()
-        relatory = session.post("https://sisregiii.saude.gov.br/cgi-bin/cons_agendas", headers=headers, data=payload,
-                                cookies=self.__cookies)
+        relatory = self.__manage_request(self.__get_worker_schedule_relatory, payload)
 
         def split_and_expand_phone_numbers(row):
             phone_numbers = re.findall(r"\(\d{2}\)\s+\d{4,5}\-\d{4}", row['Telefone(s)'] if isinstance(row['Telefone(s)'], str) else '')
