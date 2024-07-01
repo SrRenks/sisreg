@@ -22,6 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('--from_date', '-f', type=str, help='initial range', default=from_date, required=False)
     parser.add_argument('--to_date', '-t', type=str, help='final range', default=to_date, required=False)
     parser.add_argument('--columns', '-c', type=str, help='selected columns', nargs='+', default=None, required=False)
+    parser.add_argument('--banlist', '-b', type=str, help='string values to remove from dataframe in output based in string/regex', nargs='+', default=None, required=False)
     parser.add_argument('--export_path', '-ep', type=str, default=None, help='path to export data, if None will be returned in console', required=False)
     parser.add_argument('--export_type', '-et', type=str, choices=['json', 'xlsx'], default="xlsx", help='type method to export data, default "xlsx"', required=False)
 
@@ -39,7 +40,7 @@ if __name__ == '__main__':
     cpu_frequency = psutil.cpu_freq().current / 1000
     max_cpu_capacity = os.cpu_count() * psutil.cpu_count(logical=True) * psutil.cpu_freq().current / 1000
 
-    threads = min(int(max_cpu_capacity / cpu_frequency), 144)
+    threads = int(max_cpu_capacity / cpu_frequency)
 
     with tqdm(total=len(units), ascii=' ━', colour='GREEN', dynamic_ncols=True, unit="unit",
               desc=f"get workers from unit(s) (threads: {threads})", postfix={"workers": "0"}, leave=False) as pbar:
@@ -92,24 +93,23 @@ if __name__ == '__main__':
     with open(os.path.join("resources", "unit_address.json"), "r") as file:
         addresses = json.loads(file.read())
 
+    def fix_wrong_lines(row: pd.Series, wrong_lines: pd.DataFrame, to_fix: pd.DataFrame) -> pd.Series:
+        if row.name in wrong_lines.index:
+            previous_index = to_fix[to_fix.index < row.name].index.max()
+            method = next(value for value in row if isinstance(value, str) and re.search(r'^(\d+) - ', value))
+            row[:] = df.loc[previous_index]
+            row[["Procedimento", "Procedimento.1"]] = method
+        return row
+
     df = pd.DataFrame(units, dtype=str)
-    if not df.empty:
-        filter = df.apply(lambda row: any(pd.to_numeric(row.str.extract(r'^(\d+)\s+\-\s+', expand=False)) > 1), axis=1)
-        filtered_df = df[filter]
-
-        for index in filtered_df.index:
-            if index - 1 >= 0:
-                if df.loc[index - 1].str.contains(r'^01\s+\-\s+', regex=True).any():
-                    value = next(value for value in filtered_df.loc[index].values if isinstance(value, str) and re.search(r'^(\d+) - ', value))
-                    df.loc[index] = df.loc[index - 1]
-                    df.loc[index - 1, ["Procedimento", "Procedimento.1"]] = value, value
-
-        df['Data/Hora'] = df['Data/Hora'].apply(lambda x: datetime.strptime(re.search(r"(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{2}\:\d{2})", x).group(1), "%d/%m/%Y %H:%M") if pd.notnull(x) else None)
-        df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series([x.strftime("%d/%m/%Y"), x.strftime("%H:%M")]) if pd.notnull(x) else pd.Series([None, None]))
-        df['Endereco'] = df['Unidade'].apply(lambda x: addresses.get(x, ""))
-        df = df.map(lambda x: re.sub(r"^\d+\s+\-\s+", '', x) if isinstance(x, str) else x)
-        df.replace("---", None, inplace=True)
-
+    wrong_lines = df[df.apply(lambda row: any(pd.to_numeric(row.str.extract(r'^(\d+)\s+\-\s+', expand=False).squeeze()) > 1), axis=1)]
+    to_fix = df[df.index.isin(wrong_lines.index - 1) & df.apply(lambda row: row.str.contains(r'^01\s+\-\s+').any(), axis=1)]
+    df = df.apply(fix_wrong_lines, wrong_lines=wrong_lines, to_fix=to_fix, axis=1)
+    df['Data/Hora'] = df['Data/Hora'].apply(lambda x: datetime.strptime(re.search(r"(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{2}\:\d{2})", x).group(1), "%d/%m/%Y %H:%M") if pd.notnull(x) else None)
+    df[['Data', 'Hora']] = df['Data/Hora'].apply(lambda x: pd.Series([x.strftime("%d/%m/%Y"), x.strftime("%H:%M")]) if pd.notnull(x) else pd.Series([None, None]))
+    df['Endereco'] = df['Unidade'].apply(lambda x: addresses.get(x, ""))
+    df = df.map(lambda x: re.sub(r"^\d+\s+\-\s+", '', x) if isinstance(x, str) else x)
+    df.replace("---", None, inplace=True)
     df.sort_values(by=['Data/Hora'], ascending=True, inplace=True)
 
     if args["columns"]:
@@ -118,6 +118,10 @@ if __name__ == '__main__':
         if invalid_columns:
             raise ValueError(f"Invalid columns: {', '.join(invalid for invalid in invalid_columns)}.\n See valid columns: {', '.join(valid for valid in valid_columns)}.")
         df = df[args["columns"]]
+
+    if args.get("banlist"):
+        regex = re.compile(r'|'.join(re.escape(value) for value in args.get("banlist")))
+        df = df[~df['Procedimento'].str.contains(regex, na=False)]
 
     if args["export_type"] == "xlsx":
         with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
