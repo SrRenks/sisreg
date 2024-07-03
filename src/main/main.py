@@ -21,8 +21,8 @@ if __name__ == '__main__':
     parser.add_argument('--unit', '-ut', type=str, help='units', nargs='+', required=False)
     parser.add_argument('--from_date', '-f', type=str, help='initial range', default=from_date, required=False)
     parser.add_argument('--to_date', '-t', type=str, help='final range', default=to_date, required=False)
-    parser.add_argument('--columns', '-c', type=str, help='selected columns', nargs='+', default=None, required=False)
-    parser.add_argument('--banlist', '-b', type=str, help='string values to remove from dataframe in output based in string/regex', nargs='+', default=None, required=False)
+    parser.add_argument('--columns', '-c', type=str, help='selected columns, string list or txt path (split lines)', nargs='+', default=None, required=False)
+    parser.add_argument('--banlist', '-b', type=str, help='string values to remove from dataframe in output based in string/regex, string list or txt path (split lines)', nargs='+', default=None, required=False)
     parser.add_argument('--export_path', '-ep', type=str, default=None, help='path to export data, if None will be returned in console', required=False)
     parser.add_argument('--export_type', '-et', type=str, choices=['json', 'xlsx'], default="xlsx", help='type method to export data, default "xlsx"', required=False)
 
@@ -113,14 +113,22 @@ if __name__ == '__main__':
     df.sort_values(by=['Data/Hora'], ascending=True, inplace=True)
 
     if args["columns"]:
+        columns = args["columns"]
+        if os.path.exists(columns[0]):
+            columns = open(columns[0], "r").read().splitlines()
+
         valid_columns = df.columns.to_list()
-        invalid_columns = [column for column in args["columns"] if column not in valid_columns]
+        invalid_columns = [column for column in columns if column not in valid_columns]
         if invalid_columns:
             raise ValueError(f"Invalid columns: {', '.join(invalid for invalid in invalid_columns)}.\n See valid columns: {', '.join(valid for valid in valid_columns)}.")
-        df = df[args["columns"]]
+        df = df[columns]
 
     if args.get("banlist"):
-        regex = re.compile(r'|'.join(re.escape(value) for value in args.get("banlist")))
+        banlist = args["banlist"]
+        if os.path.exists(banlist[0]):
+            columns = open(banlist[0], "r").read().splitlines()
+
+        regex = re.compile('|'.join(re.escape(value) for value in banlist))
         df = df[~df['Procedimento'].str.contains(regex, na=False)]
 
     if args["export_type"] == "xlsx":
