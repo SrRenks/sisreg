@@ -126,10 +126,9 @@ if __name__ == '__main__':
     if args.get("banlist"):
         banlist = args["banlist"]
         if os.path.exists(banlist[0]):
-            columns = open(banlist[0], "r").read().splitlines()
+            banlist = open(banlist[0], "r").read().splitlines()
 
-        regex = re.compile('|'.join(re.escape(value) for value in banlist))
-        df = df[~df['Procedimento'].str.contains(regex, na=False)]
+        df = df[~df['Procedimento'].str.contains(re.compile(r'|'.join(value for value in banlist)), na=False)]
 
     if args["export_type"] == "xlsx":
         with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
