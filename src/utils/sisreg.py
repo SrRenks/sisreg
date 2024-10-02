@@ -1,8 +1,7 @@
 from typing import List, Dict, Callable, Optional
-from collections import defaultdict
 from .exceptions import LoginError
+from itertools import product
 from bs4 import BeautifulSoup
-from io import StringIO
 from time import sleep
 import pandas as pd
 import requests
@@ -115,58 +114,69 @@ class Sisreg:
         return self.__manage_request(self.__get_session).post("https://sisregiii.saude.gov.br/cgi-bin/cons_agendas", headers=headers, data=payload,
                                 cookies=self.__cookies)
 
-    def get_worker_schedule_relatory(self, worker_data: Dict[str, str], **flags) -> Dict[str, str]:
+    def get_worker_schedule_relatory(self, worker_data: Dict[str, str]) -> Dict[str, str]:
 
-        valid_params = {"chkboxExibirProcedimentos": r'^(on|off)$',
-                        "chkboxExibirTelefones": r'^(on|off)$',
-                        "chkboxListaImpressao": r'^(on|off)$'}
+        def parse_strings_to_dict_list(strings: List[str]) -> pd.DataFrame:
+            data = {}
+            current_key = None
 
-        invalid_keys = flags.keys() - valid_params.keys()
-        if invalid_keys:
-            raise ValueError(f"invalid flags key names: {', '.join(invalid_keys)}")
+            for item in strings:
+                clean_item = item.strip()
+                if clean_item.endswith(':'):
+                    current_key = clean_item[:-1]
+                    data[current_key] = []
+                elif current_key and clean_item:
+                    data[current_key].append(re.sub(r"\s+", " ", clean_item))
 
-        invalid_params = {key: type(value) for key, value in flags.items() if not isinstance(value, str)}
-        if invalid_params:
-            raise ValueError(f"invalid flags value types: {', '.join(f'{key}: {value}' for key, value in invalid_params.items())}")
+            data["Procedimento(s)"] = list(map(lambda item: item.lstrip('- ').strip(),
+                                                filter(lambda item: not item.isdigit(), data.get('Procedimento(s)', []))))
 
-        invalid_formats = {key: value for key, value in flags.items() if not re.match(valid_params[key], value)}
-        if invalid_formats:
-            raise ValueError(f"invalid flags value formats: {', '.join(f'{key}: {value}' for key, value in invalid_formats.items())}")
+            data = {key: ', '.join(value) if isinstance(value, list) else value for key, value in data.items()}
+            data = [{**data, 'Procedimento(s)': method} for method in data['Procedimento(s)'].split(', ')]
+
+            return data
 
         payload = {"co_solicitacao": "",
-                  "cns_paciente": "",
-                  "dataInicial": worker_data["from_date"],
-                  "dataFinal": worker_data["to_date"],
-                  "ups": worker_data["unit_id"],
-                  "cpf": worker_data["worker_id"],
-                  "pa": worker_data["method_id"],
-                  "cmbTipoOperacao": "Consulta",
-                  "etapa": "ListaImpressao"}
+                   "cns_paciente": "",
+                   "chkboxExibirProcedimentos": "on",
+                   "chkboxExibirTelefones": "on",
+                   "dataInicial": worker_data["from_date"],
+                   "dataFinal": worker_data["to_date"],
+                   "ups": worker_data["unit_id"],
+                   "cpf": worker_data["worker_id"],
+                   "pa": worker_data["method_id"],
+                   "cmbTipoOperacao": "Consulta",
+                   "cmbOrdenacao": "1",
+                   "cmbMaxResults": "500",
+                   "etapa": "ListaConsulta",
+                   "pagina": "0",
+                   "linhas": "0"}
 
-        payload.update(flags)
-
+        registry = []
         relatory = self.__manage_request(self.__get_worker_schedule_relatory, payload)
+        soup = BeautifulSoup(relatory.content.decode(relatory.encoding), "html.parser")
+        registry.append(soup)
+        counter = soup.find(string=re.compile("Mostrando Página"))
 
-        def split_and_expand_phone_numbers(row):
-            phone_numbers = re.findall(r"\(\d{2}\)\s+\d{4,5}\-\d{4}", row['Telefone(s)'] if isinstance(row['Telefone(s)'], str) else '')
-            if len(phone_numbers) > 1:
-                new_lines = []
-                for phone_number in phone_numbers:
-                    new_line = row.copy()
-                    new_line['Telefone(s)'] = phone_number
-                    new_lines.append(new_line)
-                return pd.DataFrame(new_lines)
+        if counter:
+            counter = counter.find_next_sibling(string=re.compile(r"de\s+\d+"))
+            counter = int(re.search(r"(\d+)", counter.text.strip()).group(0))
+            for count in range(2, counter + 1):
+                payload["pagina"] = count
+                relatory = self.__manage_request(self.__get_worker_schedule_relatory, payload)
+                registry.append(BeautifulSoup(relatory.content.decode(relatory.encoding), "html.parser"))
 
-            return row.to_frame().T
+        data = []
+        for soup in registry:
+            tables = soup.findAll("table", {"class": "table_listagem", "id": re.compile(r"tblConsulta\d+")})
+            for table in tables:
+                strings = [string for string in table.strings if string and not re.match(r"^\s+$", string)]
+                strings.insert(0, "Código:")
+                data.extend(parse_strings_to_dict_list(strings))
 
-        soup = BeautifulSoup(relatory.content, "html.parser")
-        data_div = soup.find("div", {"id": "divImpressaoAgenda"})
-        table = data_div.find("table", {"id": "tblImpressao"})
-        if not table:
+        if not data:
             return {}
 
-        df = pd.read_html(StringIO(table.prettify()), header=0, converters=defaultdict(lambda: str))[0]
-        df = df.apply(split_and_expand_phone_numbers, axis=1).reset_index(drop=True)
-        df = pd.concat(df.tolist(), ignore_index=True)
-        df[["Unidade", "unit_id", "Profissional", "worker_id", "method_id"]] = worker_data["unit"], worker_data["unit_id"], worker_data["worker"], worker_data["worker_id"], worker_data["method_id"]
-        return df.to_dict(orient="records")
+        data = pd.DataFrame(data)
+        data[["Unidade", "unit_id", "Profissional", "worker_id", "method_id"]] = worker_data["unit"], worker_data["unit_id"], worker_data["worker"], worker_data["worker_id"], worker_data["method_id"]
+        return data.to_dict(orient="records")
